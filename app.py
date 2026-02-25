@@ -108,5 +108,4 @@ demo = gr.Interface(
     )
 )
 
-app = FastAPI()
-app = gr.mount_gradio_app(app, demo, path="/")
+demo.launch()
