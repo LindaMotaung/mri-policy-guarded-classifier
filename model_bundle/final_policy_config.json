@@ -1,0 +1,6 @@
+{
+  "temperature_T": 0.9261435270309448,
+  "tau_conf": 0.9874237179756165,
+  "tau_domain": 0.580288,
+  "notes": "Final demo policy: ABSTAIN if p_in_domain < tau_domain OR max_prob_cal < tau_conf."
+}
