@@ -1,3 +1,13 @@
+---
+title: Policy-guarded MRI Tumor Classifier
+emoji: 🧠
+colorFrom: blue
+colorTo: indigo
+sdk: gradio
+sdk_version: 5.49.1
+app_file: app.py
+pinned: false
+---
 # MRI Policy-Guarded Classifier
 
 Policy-guarded MRI 4-class tumor classifier (ResNet18) with **calibration (temperature scaling)** and **abstain-on-OOD** guardrails (domain guard), shipped with a **Gradio demo**.
