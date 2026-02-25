@@ -16,7 +16,7 @@ _service = None
 # MODEL_REF can be:
 #   - directory with best_model.pth + policy artifacts (preferred)
 #   - path to .pth checkpoint (legacy MVP or training best_model.pth)
-DEFAULT_MODEL_REF = "/kaggle/working/mri-mvp/best_metric_model.pth"
+DEFAULT_MODEL_REF = "./model_bundle/"
 MODEL_REF = os.getenv("MODEL_REF", os.getenv("MODEL_PATH", DEFAULT_MODEL_REF))
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
