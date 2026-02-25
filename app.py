@@ -1,5 +1,3 @@
-%%writefile /kaggle/working/mri-mvp/src/mri/serving/app.py
-# CELL: 07_SERVING_APP
 from __future__ import annotations
 
 import os
