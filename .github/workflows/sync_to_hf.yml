@@ -18,6 +18,6 @@ jobs:
 
       - name: Push to Hugging Face
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
         run: |
           git push --force https://LindaMot:$HF_TOKEN@huggingface.co/spaces/LindaMot/mri-tumor-classifier main
