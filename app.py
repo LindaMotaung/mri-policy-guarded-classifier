@@ -160,7 +160,7 @@ async def api_analyze(files: List[UploadFile] = File(...)):
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-app = gr.mount_gradio_app(app, demo, path="/")
+app = gr.mount_gradio_app(app, demo, path="/", ssr_mode=False)
 
 if __name__ == "__main__":
     import uvicorn
