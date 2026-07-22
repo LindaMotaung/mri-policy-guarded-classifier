@@ -142,13 +142,7 @@ async def api_analyze(files: List[UploadFile] = File(...)):
                 shutil.copyfileobj(f.file, out_f)
             tmp_paths.append(dest)
 
-        try:
-            out = run_case(tmp_paths)
-        except Exception:
-            # TEMP: surface the real traceback while we diagnose a 500 - remove once fixed.
-            import traceback
-            from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=500, content={"debug_traceback": traceback.format_exc()})
+        out = run_case(tmp_paths)
 
         return {
             "status": out.get("status"),
