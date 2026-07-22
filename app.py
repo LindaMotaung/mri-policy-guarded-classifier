@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import os
+import shutil
+import tempfile
+from typing import List
+
 import gradio as gr
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 import torch
 import pandas as pd
 
@@ -30,6 +34,23 @@ except Exception as e:
     _bundle_error = str(e)
 
 
+def run_case(filepaths: List[str]) -> dict:
+    """Shared inference path used by both the Gradio UI and the /api/analyze route."""
+    if _bundle is None:
+        raise RuntimeError(
+            f"Model bundle not loaded. MODEL_REF: {MODEL_REF}. Error: {_bundle_error}"
+        )
+
+    slices, meta = load_case(filepaths)
+    if not slices:
+        raise RuntimeError(f"No usable slices. Loader warnings: {meta.get('warnings', [])}")
+
+    pil_slices = [s.image for s in slices]
+    out = predict_case(_bundle, pil_slices, device=device)
+    out["warnings"] = meta.get("warnings", [])
+    return out
+
+
 def run_inference(files):
     # Normalize uploaded file objects to filepaths
     files = files or []
@@ -49,12 +70,10 @@ def run_inference(files):
             f"Error: {_bundle_error}"
         )
 
-    slices, meta = load_case(filepaths)
-    if not slices:
-        raise gr.Error(f"No usable slices. Loader warnings: {meta.get('warnings', [])}")
-
-    pil_slices = [s.image for s in slices]
-    out = predict_case(_bundle, pil_slices, device=device)
+    try:
+        out = run_case(filepaths)
+    except RuntimeError as e:
+        raise gr.Error(str(e))
 
     rows = []
     for r in out["per_slice"]:
@@ -88,7 +107,7 @@ def run_inference(files):
     )
 
     gallery = out["processed_images"][:32]
-    return header, gallery, case_label, df, meta.get("warnings", [])
+    return header, gallery, case_label, df, out.get("warnings", [])
 
 
 demo = gr.Interface(
@@ -108,4 +127,41 @@ demo = gr.Interface(
     )
 )
 
-demo.launch()
+app = FastAPI()
+
+
+@app.post("/api/analyze")
+async def api_analyze(files: List[UploadFile] = File(...)):
+    """Plain JSON REST endpoint for non-Gradio clients (e.g. the .NET API)."""
+    tmpdir = tempfile.mkdtemp(prefix="mri_api_")
+    try:
+        tmp_paths = []
+        for f in files:
+            dest = os.path.join(tmpdir, f.filename)
+            with open(dest, "wb") as out_f:
+                shutil.copyfileobj(f.file, out_f)
+            tmp_paths.append(dest)
+
+        out = run_case(tmp_paths)
+
+        return {
+            "status": out.get("status"),
+            "abstain_type": out.get("abstain_type"),
+            "abstain_reason": out.get("abstain_reason"),
+            "prediction": out.get("case_prediction"),
+            "confidence": out.get("top_conf"),
+            "probabilities": out.get("case_probs"),
+            "valid_slices": out.get("valid_slices"),
+            "agree_rate": out.get("agree_rate"),
+            "p_in_domain": out.get("p_in_domain"),
+            "warnings": out.get("warnings", []),
+        }
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+app = gr.mount_gradio_app(app, demo, path="/")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 7860)))
