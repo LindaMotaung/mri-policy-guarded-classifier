@@ -20,4 +20,4 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git push --force https://KaboKableMolefe:$HF_TOKEN@huggingface.co/spaces/KaboKableMolefe/mri-tumor-classifier main
+          git push --force https://LindaMot:$HF_TOKEN@huggingface.co/spaces/LindaMot/mri-tumor-classifier main
