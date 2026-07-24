@@ -183,5 +183,8 @@ MIT (code only). Dataset licenses/terms are governed by their Kaggle sources.
 ---
 
 ## Author
-Kabo Molefe  
-GitHub: https://github.com/kablewithak
+Original author: Kabo Molefe (no longer with the project)
+
+Currently maintained by Linda Motaung — GitHub: https://github.com/LindaMotaung
+This repo (`LindaMotaung/mri-policy-guarded-classifier`) is the canonical source;
+Kabo's original repo and personal Space are no longer available.
