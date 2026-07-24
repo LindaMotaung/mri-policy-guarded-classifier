@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import io
 import os
 import shutil
 import tempfile
@@ -107,7 +109,14 @@ def run_inference(files):
     )
 
     gallery = out["processed_images"][:32]
-    return header, gallery, case_label, df, out.get("warnings", [])
+
+    heatmaps = [
+        (r["heatmap"], f"slice {r['slice_index']}: {r.get('top_label')}")
+        for r in out["per_slice"]
+        if r.get("heatmap") is not None
+    ][:32]
+
+    return header, gallery, heatmaps, case_label, df, out.get("warnings", [])
 
 
 demo = gr.Interface(
@@ -116,6 +125,7 @@ demo = gr.Interface(
     outputs=[
         gr.Textbox(label="Case Status"),
         gr.Gallery(label="What the model saw (processed slices)", columns=4, rows=2),
+        gr.Gallery(label="Heatmaps (model's suspicious regions, per slice's top label)", columns=4, rows=2),
         gr.Label(num_top_classes=4, label="Case Prediction / Abstain"),
         gr.Dataframe(label="Per-slice QC + Predictions"),
         gr.JSON(label="Loader Warnings"),
@@ -144,6 +154,18 @@ async def api_analyze(files: List[UploadFile] = File(...)):
 
         out = run_case(tmp_paths)
 
+        heatmaps = []
+        for r in out["per_slice"]:
+            if r.get("heatmap") is None:
+                continue
+            buf = io.BytesIO()
+            r["heatmap"].save(buf, format="PNG")
+            heatmaps.append({
+                "slice_index": r["slice_index"],
+                "label": r.get("top_label"),
+                "image_base64": base64.b64encode(buf.getvalue()).decode("ascii"),
+            })
+
         return {
             "status": out.get("status"),
             "abstain_type": out.get("abstain_type"),
@@ -155,6 +177,7 @@ async def api_analyze(files: List[UploadFile] = File(...)):
             "agree_rate": out.get("agree_rate"),
             "p_in_domain": out.get("p_in_domain"),
             "warnings": out.get("warnings", []),
+            "heatmaps": heatmaps,
         }
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)

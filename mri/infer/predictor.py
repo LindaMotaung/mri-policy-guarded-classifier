@@ -20,6 +20,7 @@ from PIL import Image
 
 from mri.preprocess.core import crop_pad_square
 from mri.qc.basic import qc_slice
+from mri.infer.cam import CAMExtractor, compute_cam, overlay_cam_on_image
 
 
 IMG_SIZE = 224
@@ -245,6 +246,7 @@ def predict_case(
     device: torch.device,
     min_valid_slices: int = 3,
     abstain_agree_threshold: float = 0.50,
+    compute_heatmaps: bool = True,
 ) -> Dict[str, Any]:
     """
     Multi-slice inference with policy:
@@ -252,6 +254,10 @@ def predict_case(
       - aggregate logits + embeddings across valid slices
       - apply temperature scaling (if available)
       - apply policy: ABSTAIN if (p_in_domain < tau_domain) OR (max_prob_cal < tau_conf)
+
+    When compute_heatmaps is True, each valid slice also gets a CAM overlay
+    (record["heatmap"], a PIL Image) showing where the model's evidence for
+    its top predicted label is concentrated on that slice.
     """
     labels = bundle.labels
     k = bundle.num_classes
@@ -261,49 +267,64 @@ def predict_case(
     logits_list: List[torch.Tensor] = []
     emb_list: List[torch.Tensor] = []
 
-    for idx, img in enumerate(slices):
-        proc, pmeta = crop_pad_square(img)
-        processed_images.append(proc)
+    cam_extractor = CAMExtractor(bundle.model) if compute_heatmaps else None
 
-        ok, qcmeta = qc_slice(proc)
+    try:
+        for idx, img in enumerate(slices):
+            proc, pmeta = crop_pad_square(img)
+            processed_images.append(proc)
 
-        record: Dict[str, Any] = {
-            "slice_index": idx,
-            "preprocess_ok": bool(pmeta.get("ok", True)),
-            "preprocess_reason": pmeta.get("reason"),
-            "bbox": pmeta.get("bbox"),
-            "qc_ok": bool(ok),
-            "qc": qcmeta,
-            "top_label": None,
-            "top_conf": None,
-        }
+            ok, qcmeta = qc_slice(proc)
 
-        if not ok:
+            record: Dict[str, Any] = {
+                "slice_index": idx,
+                "preprocess_ok": bool(pmeta.get("ok", True)),
+                "preprocess_reason": pmeta.get("reason"),
+                "bbox": pmeta.get("bbox"),
+                "qc_ok": bool(ok),
+                "qc": qcmeta,
+                "top_label": None,
+                "top_conf": None,
+                "heatmap": None,
+            }
+
+            if not ok:
+                per_slice.append(record)
+                continue
+
+            x = _val_tf(proc).unsqueeze(0).to(device)
+
+            with torch.no_grad():
+                logits = bundle.model(x)[0]  # (K,)
+
+            probs = _probs_from_logits(logits)
+            top_i = int(torch.argmax(torch.tensor(probs)).item())
+
+            record["probs"] = {labels[i]: float(probs[i]) for i in range(k)}
+            record["top_label"] = labels[top_i]
+            record["top_conf"] = float(probs[top_i])
+
+            if cam_extractor is not None and cam_extractor.activations is not None:
+                try:
+                    cam2d = compute_cam(cam_extractor.activations, bundle.model.fc.weight, top_i, proc.size)
+                    record["heatmap"] = overlay_cam_on_image(proc, cam2d)
+                except Exception:
+                    # Heatmap is a bonus signal - never fail inference because of it
+                    record["heatmap"] = None
+
             per_slice.append(record)
-            continue
+            logits_list.append(logits)
 
-        x = _val_tf(proc).unsqueeze(0).to(device)
-
-        with torch.no_grad():
-            logits = bundle.model(x)[0]  # (K,)
-
-        probs = _probs_from_logits(logits)
-        top_i = int(torch.argmax(torch.tensor(probs)).item())
-
-        record["probs"] = {labels[i]: float(probs[i]) for i in range(k)}
-        record["top_label"] = labels[top_i]
-        record["top_conf"] = float(probs[top_i])
-
-        per_slice.append(record)
-        logits_list.append(logits)
-
-        # embedding (CPU)
-        try:
-            emb = _embed_1d(bundle.feat_extractor, x)
-            emb_list.append(emb)
-        except Exception:
-            # Do not fail inference if embedding path breaks
-            pass
+            # embedding (CPU)
+            try:
+                emb = _embed_1d(bundle.feat_extractor, x)
+                emb_list.append(emb)
+            except Exception:
+                # Do not fail inference if embedding path breaks
+                pass
+    finally:
+        if cam_extractor is not None:
+            cam_extractor.remove()
 
     result: Dict[str, Any] = {
         "status": "ABSTAIN",
