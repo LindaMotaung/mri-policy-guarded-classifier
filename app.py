@@ -4,6 +4,7 @@ import base64
 import io
 import os
 import shutil
+import subprocess
 import tempfile
 from typing import List
 
@@ -18,6 +19,21 @@ from mri.infer.predictor import load_bundle, predict_case, ModelBundle
 # Feature flag (safe rollout)
 USE_SERVICE = os.getenv("USE_SERVICE", "1") == "1"
 _service = None
+
+
+def _get_model_version() -> str:
+    """The commit SHA of the code actually running - lets any prediction be traced
+    back to the exact model/policy version that produced it (audit trail)."""
+    try:
+        sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=os.path.dirname(os.path.abspath(__file__)), timeout=5
+        )
+        return sha.decode().strip()
+    except Exception:
+        return "unknown"
+
+
+MODEL_VERSION = _get_model_version()
 
 # MODEL_REF can be:
 #   - directory with best_model.pth + policy artifacts (preferred)
@@ -178,6 +194,7 @@ async def api_analyze(files: List[UploadFile] = File(...)):
             "p_in_domain": out.get("p_in_domain"),
             "warnings": out.get("warnings", []),
             "heatmaps": heatmaps,
+            "model_version": MODEL_VERSION,
         }
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
