@@ -3,6 +3,14 @@ name: Sync to Hugging Face Space
 on:
   push:
     branches: [main]
+    # Only redeploy the live Space when something that actually affects the
+    # served app changes - not on every push to main (docs, other workflow
+    # files, etc. used to trigger a spurious rebuild/restart otherwise).
+    paths:
+      - "app.py"
+      - "mri/**"
+      - "model_bundle/**"
+      - "requirements.txt"
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 

@@ -1,0 +1,24 @@
+name: Uptime check - brain MRI Space
+
+on:
+  schedule:
+    # Every 25 minutes. Also has a useful side-effect: keeps the free-tier
+    # Space from ever going idle long enough to auto-sleep (2 days), since
+    # this alone counts as activity.
+    - cron: "*/25 * * * *"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the live Space
+        run: |
+          # Generous timeout - if the Space *is* asleep, this ping also
+          # doubles as the wake-up call, so give it room for a cold start.
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 https://lindamot-mri-tumor-classifier.hf.space/)
+          echo "HTTP status: $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::Space did not return 200 (got $code)"
+            exit 1
+          fi
